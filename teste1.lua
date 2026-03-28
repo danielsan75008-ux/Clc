@@ -24,14 +24,13 @@ TargetPlayer      = nil
 AttachEnabled     = false
 AutoAttackEnabled = false
 DistanceValue     = 5
-TweenSpeedValue   = 100        -- usado só no modo Tween
+TweenSpeedValue   = 100
 OrbitSpeedValue   = 1.5
-SelectedPosition  = "Behind"   -- "Behind" | "OrbitTop"
-MovementMode      = "Teleport" -- "Teleport" | "Tween"
+SelectedPosition  = "Behind"
+MovementMode      = "Teleport"
 
-local orbitAngle  = 0
-local attachLoop  = nil
-local autoAtkLoop = nil
+local orbitAngle = 0
+local attachLoop = nil
 
 -- ═══════════════════════════════════
 --  HELPERS
@@ -44,68 +43,14 @@ local function getTarget()
 end
 
 -- ═══════════════════════════════════
---  LOOK AT SYSTEM
--- ═══════════════════════════════════
-LookAtEnabled    = false
-LookAtSpeedValue = 10      -- 1 (lento) a 20 (instantaneo)
-LookAtMaxDist    = 100     -- distancia maxima para ativar o look
-LookMovementMode = "Tween" -- "Tween" ou "Teleport"
-
-local lookLoop   = nil
-local lookTween  = nil
-
-local function startLookLoop()
-    if lookLoop then lookLoop:Disconnect() end
-    lookLoop = RunService.Heartbeat:Connect(function(dt)
-        if not LookAtEnabled then return end
-
-        local targetHRP = getTarget()
-        if not targetHRP then return end
-
-        local char = LocalPlayer.Character
-        if not char then return end
-        local myHRP = char:FindFirstChild("HumanoidRootPart")
-        if not myHRP then return end
-
-        -- Checa distancia maxima
-        local dist = (myHRP.Position - targetHRP.Position).Magnitude
-        if dist > LookAtMaxDist then return end
-
-        -- CFrame destino: mesma posicao, so vira para o alvo no eixo Y
-        local targetPos = Vector3.new(targetHRP.Position.X, myHRP.Position.Y, targetHRP.Position.Z)
-        local goalCF    = CFrame.new(myHRP.Position, targetPos)
-
-        if LookMovementMode == "Teleport" then
-            -- Instantaneo
-            myHRP.CFrame = goalCF
-        else
-            -- Tween suave
-            if lookTween then lookTween:Cancel() end
-            local tweenTime = 1 / math.max(LookAtSpeedValue, 0.1)
-            lookTween = TweenService:Create(
-                myHRP,
-                TweenInfo.new(tweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                { CFrame = goalCF }
-            )
-            lookTween:Play()
-        end
-    end)
-end
-
--- ═══════════════════════════════════
 --  MODOS DE MOVIMENTO
 -- ═══════════════════════════════════
-
--- BEHIND: fica atrás do alvo olhando para ele
 local function getBehindCF(targetHRP)
-    -- CFrame.new(0,0,D) = atrás do alvo no espaço local dele
     local goalCF  = targetHRP.CFrame * CFrame.new(0, 0, DistanceValue)
-    -- Vira o player para olhar de frente para o alvo
     local lookDir = (targetHRP.Position - goalCF.Position).Unit
     return CFrame.lookAt(goalCF.Position, goalCF.Position + lookDir)
 end
 
--- ORBITTOP: órbita em cima apontando para baixo
 local function getOrbitTopCF(targetHRP, dt)
     orbitAngle = orbitAngle + OrbitSpeedValue * dt
     local x   = math.cos(orbitAngle) * DistanceValue
@@ -114,12 +59,10 @@ local function getOrbitTopCF(targetHRP, dt)
     return CFrame.lookAt(pos, targetHRP.Position)
 end
 
--- Move o player com teleporte direto OU Tween dependendo do modo
 local function movePlayer(myHRP, goalCF)
     if MovementMode == "Teleport" then
         myHRP.CFrame = goalCF
     else
-        -- Tween: SpeedValue 1-1000 → tempo de 1s até 0.001s
         local t = TweenService:Create(
             myHRP,
             TweenInfo.new(1 / TweenSpeedValue, Enum.EasingStyle.Linear),
@@ -132,22 +75,19 @@ end
 -- ═══════════════════════════════════
 --  AUTO ATTACK
 -- ═══════════════════════════════════
-
-AttackButtonName  = "PunchButton"   -- nome configuravel pela UI
 local cachedPunchButton = nil
 
 local function findPunchButton()
     local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
     if not playerGui then return nil end
-    for _, v in ipairs(playerGui:GetDescendants()) do
-        if v:IsA("GuiButton") and v.Name == AttackButtonName then
+    for _, v in pairs(playerGui:GetDescendants()) do
+        if v:IsA("GuiButton") and v.Name == "PunchButton" then
             return v
         end
     end
     return nil
 end
 
--- Dispara TUDO no botao (mesma logica do script de referencia)
 local function fireButton(btn)
     pcall(function()
         -- 1) VirtualInputManager: simula MouseButton1Down + Up
@@ -176,33 +116,6 @@ local function fireButton(btn)
     end)
 end
 
--- ── Desativa ShiftLock se encontrar o botao ──────────────
-local function disableShiftLock()
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then return end
-    for _, v in ipairs(playerGui:GetDescendants()) do
-        if v:IsA("GuiButton") and (v.Name == "ShiftLockButton" or v.Name == "ShiftLock") then
-            pcall(function()
-                -- Clica para desligar se estiver ativo
-                if v.Image and string.find(tostring(v.Image), "on") then
-                    v.MouseButton1Click:Fire()
-                end
-                -- Fallback: desliga direto
-                v.Visible = false
-            end)
-        end
-    end
-    -- Tambem tenta pelo servico nativo
-    pcall(function()
-        local StarterGui = game:GetService("StarterGui")
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.EmotesMenu, false)
-    end)
-    pcall(function()
-        local uis = game:GetService("UserInputService")
-        uis.MouseBehavior = Enum.MouseBehavior.Default
-    end)
-end
-
 -- ═══════════════════════════════════
 --  LOOPS PRINCIPAIS
 -- ═══════════════════════════════════
@@ -210,33 +123,27 @@ local function startAttachLoop()
     if attachLoop then attachLoop:Disconnect() end
     attachLoop = RunService.Heartbeat:Connect(function(dt)
         if not AttachEnabled then return end
-
         local targetHRP = getTarget()
         if not targetHRP then return end
         local char = LocalPlayer.Character
         if not char then return end
         local myHRP = char:FindFirstChild("HumanoidRootPart")
         if not myHRP then return end
-
         local goalCF
         if SelectedPosition == "Behind" then
             goalCF = getBehindCF(targetHRP)
         elseif SelectedPosition == "OrbitTop" then
             goalCF = getOrbitTopCF(targetHRP, dt)
         end
-
-        if goalCF then
-            movePlayer(myHRP, goalCF)
-        end
+        if goalCF then movePlayer(myHRP, goalCF) end
     end)
 end
 
 local function startAutoAttack()
     task.spawn(function()
         while true do
-            task.wait() -- roda a cada frame (igual ao script de referencia)
+            task.wait() -- roda a cada frame
             if AutoAttackEnabled then
-                -- Valida cache do botao
                 if not cachedPunchButton or not cachedPunchButton.Parent then
                     cachedPunchButton = findPunchButton()
                 end
@@ -249,7 +156,6 @@ local function startAutoAttack()
 end
 
 startAttachLoop()
-startLookLoop()
 startAutoAttack()
 
 -- ═══════════════════════════════════
@@ -282,14 +188,11 @@ do
                 table.insert(names, p.Name)
             end
         end
-        if #names == 0 then
-            table.insert(names, "(Nenhum player)")
-        end
+        if #names == 0 then table.insert(names, "(Nenhum player)") end
         return names
     end
 
     local playerDropdown
-
     local function refreshDropdown()
         pcall(function() playerDropdown:Refresh(getPlayerNames()) end)
     end
@@ -308,14 +211,8 @@ do
         end,
     })
 
-    task.defer(function()
-        task.wait(1)
-        pcall(refreshDropdown)
-    end)
-
-    Players.PlayerAdded:Connect(function()
-        task.wait(0.5); pcall(refreshDropdown)
-    end)
+    task.defer(function() task.wait(1); pcall(refreshDropdown) end)
+    Players.PlayerAdded:Connect(function() task.wait(0.5); pcall(refreshDropdown) end)
     Players.PlayerRemoving:Connect(function(p)
         if p == TargetPlayer then TargetPlayer = nil; AttachEnabled = false end
         task.wait(0.5); pcall(refreshDropdown)
@@ -324,7 +221,7 @@ do
     TabAttach:Button({
         Title    = "Atualizar Lista",
         Icon     = "solar:refresh-bold",
-        Desc     = "Recarrega os players disponíveis",
+        Desc     = "Recarrega os players disponiveis",
         Callback = function()
             pcall(refreshDropdown)
             WindUI:Notify({ Title = "Players", Content = "Lista atualizada!", Duration = 2 })
@@ -346,7 +243,7 @@ do
 
     TabAttach:Dropdown({
         Title    = "Position Type",
-        Desc     = "Behind = atrás | OrbitTop = órbita em cima",
+        Desc     = "Behind = atras | OrbitTop = orbita em cima",
         Values   = { "Behind", "OrbitTop" },
         Callback = function(selected)
             SelectedPosition = tostring(selected)
@@ -359,15 +256,11 @@ do
 
     TabAttach:Dropdown({
         Title    = "Move Type",
-        Desc     = "Teleport = instantâneo | Tween = suave",
+        Desc     = "Teleport = instantaneo | Tween = suave",
         Values   = { "Teleport", "Tween" },
         Callback = function(selected)
             MovementMode = tostring(selected)
-            WindUI:Notify({
-                Title   = "Movement Mode",
-                Content = "Modo: " .. tostring(selected),
-                Duration = 2,
-            })
+            WindUI:Notify({ Title = "Movement Mode", Content = "Modo: " .. tostring(selected), Duration = 2 })
         end,
     })
 
@@ -376,82 +269,26 @@ do
 
     TabAttach:Slider({
         Title = "Distance",
-        Desc  = "Distância até o alvo (studs)",
+        Desc  = "Distancia ate o alvo (studs)",
         Step  = 1,
         Value = { Min = 1, Max = 30, Default = 5 },
-        Callback = function(v)
-            DistanceValue = v
-        end,
+        Callback = function(v) DistanceValue = v end,
     })
 
     TabAttach:Slider({
         Title = "Tween Speed",
-        Desc  = "Velocidade do Tween (só ativo no modo Tween)",
+        Desc  = "Velocidade do Tween (so ativo no modo Tween)",
         Step  = 1,
         Value = { Min = 1, Max = 1000, Default = 100 },
-        Callback = function(v)
-            TweenSpeedValue = v
-        end,
+        Callback = function(v) TweenSpeedValue = v end,
     })
 
     TabAttach:Slider({
         Title = "Orbit Speed",
-        Desc  = "Velocidade de rotação no modo OrbitTop",
+        Desc  = "Velocidade de rotacao no modo OrbitTop",
         Step  = 1,
         Value = { Min = 1, Max = 10, Default = 3 },
-        Callback = function(v)
-            OrbitSpeedValue = v * 0.5
-        end,
-    })
-
-    -- ── Look At Settings ──────────────────────────────
-    TabAttach:Section({ Title = "Look At Settings" })
-
-    TabAttach:Toggle({
-        Title = "Look At Target",
-        Desc  = "Personagem vira para o alvo (Tween ou Teleport)",
-        Value = false,
-        Callback = function(v)
-            LookAtEnabled = v
-            WindUI:Notify({
-                Title    = "Look At",
-                Content  = v and "Look At ATIVADO!" or "Look At desativado.",
-                Duration = 2,
-            })
-        end,
-    })
-
-    TabAttach:Dropdown({
-        Title    = "Look Move Mode",
-        Desc     = "Tween = suave | Teleport = instantaneo",
-        Values   = { "Tween", "Teleport" },
-        Callback = function(v)
-            LookMovementMode = tostring(v)
-        end,
-    })
-
-    -- ── Auto Attack Settings ───────────────────────────
-    TabAttach:Section({ Title = "Auto Attack Settings" })
-
-    TabAttach:Dropdown({
-        Title    = "Attack Button Name",
-        Desc     = "Nome do botao de ataque na GUI do jogo",
-        Values   = { "PunchButton", "AttackButton", "HitButton", "AtkButton", "FightButton", "StrikeButton" },
-        Callback = function(v)
-            AttackButtonName = tostring(v)
-            cachedPunchButton = nil -- reseta cache ao trocar nome
-            WindUI:Notify({ Title = "Attack Button", Content = "Nome: " .. tostring(v), Duration = 2 })
-        end,
-    })
-
-    TabAttach:Button({
-        Title    = "Disable ShiftLock",
-        Icon     = "solar:lock-bold",
-        Desc     = "Tenta desativar o ShiftLock do jogo",
-        Callback = function()
-            disableShiftLock()
-            WindUI:Notify({ Title = "ShiftLock", Content = "ShiftLock desativado!", Duration = 2 })
-        end,
+        Callback = function(v) OrbitSpeedValue = v * 0.5 end,
     })
 
     -- ── Controls ──────────────────────────────────────
@@ -464,8 +301,8 @@ do
         Callback = function(v)
             AttachEnabled = v
             WindUI:Notify({
-                Title    = "Attach",
-                Content  = v and "Attach ATIVADO!" or "Attach desativado.",
+                Title   = "Attach",
+                Content = v and "Attach ATIVADO!" or "Attach desativado.",
                 Duration = 2,
             })
         end,
@@ -473,14 +310,14 @@ do
 
     TabAttach:Toggle({
         Title = "Auto Attack",
-        Desc  = "Ativa/desativa ataque automatico continuo",
+        Desc  = "Clica PunchButton em loop automaticamente",
         Value = false,
         Callback = function(v)
             AutoAttackEnabled = v
-            if v then cachedPunchButton = nil end -- reseta cache ao ligar
+            if v then cachedPunchButton = nil end
             WindUI:Notify({
-                Title    = "Auto Attack",
-                Content  = v and "Auto Attack ATIVADO!" or "Auto Attack desativado.",
+                Title   = "Auto Attack",
+                Content = v and "Auto Attack ATIVADO!" or "Auto Attack desativado.",
                 Duration = 2,
             })
         end,
@@ -491,9 +328,9 @@ end
 --  ABA: EU CONSEGUI 😌
 -- ══════════════════════════════════════════════════════
 do
-    TabWin:Section({ Title = "Missão Cumprida!" })
-    TabWin:Section({ Title = "O Target Attach está funcionando. Bom jogo! 😌" })
-    TabWin:Section({ Title = "Créditos" })
+    TabWin:Section({ Title = "Missao Cumprida!" })
+    TabWin:Section({ Title = "O Target Attach esta funcionando. Bom jogo! 😌" })
+    TabWin:Section({ Title = "Creditos" })
     TabWin:Section({ Title = "Script: CoiledTom | UI: Wind UI v2 by Footagesus" })
 
     TabWin:Button({
@@ -507,7 +344,7 @@ do
 end
 
 -- ══════════════════════════════════════════════════════
---  NOTIFICAÇÃO INICIAL
+--  NOTIFICACAO INICIAL
 -- ══════════════════════════════════════════════════════
 WindUI:Notify({
     Title    = "CoiledTom Hub",
